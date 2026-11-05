@@ -91,9 +91,11 @@ jobs:
           # fails the number is simply skipped; a published image tag is never overwritten.
           git push origin "refs/tags/${git_tag}"
 
-          echo "git_tag=${git_tag}" >> "$GITHUB_OUTPUT"
-          echo "image_tag=${image_tag}" >> "$GITHUB_OUTPUT"
-          echo "minor_tag=${minor_tag}" >> "$GITHUB_OUTPUT"
+          {
+            echo "git_tag=${git_tag}"
+            echo "image_tag=${image_tag}"
+            echo "minor_tag=${minor_tag}"
+          } >> "$GITHUB_OUTPUT"
           echo "Building ${IMAGE_NAME}:${image_tag} (git tag ${git_tag}), also tagged ${minor_tag} and latest" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up Docker Buildx
