@@ -1,23 +1,26 @@
 name: Tests
 
-# Runs the full Go test suite on every push to the `custom` branch (and on PRs
-# targeting it), including:
+# Runs the full Go test suite, including:
 #   - the SQLite-backed integration tests (need `-tags sqlite`, hence cgo)
 #   - the MySQL-backed datastore tests (need TEST_MYSQL and a database whose
 #     schema the per-test databases are cloned from)
+#
+# Pushes to `custom` don't trigger this directly: the custom image workflow
+# (custom-image.yml) calls it as its first job, and only builds and publishes
+# the image if it succeeds. It's also run on PRs targeting `custom`.
 
 on:
-  push:
-    branches: [ custom ]
   pull_request:
     branches: [ custom ]
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: tests-${{ github.ref }}
+  # When called from another workflow, github.workflow is the caller's name
+  group: tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

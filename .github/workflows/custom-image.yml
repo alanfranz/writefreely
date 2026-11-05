@@ -31,9 +31,17 @@ env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/writefreely
 
 jobs:
+  # Run the full test suite first; the image is only built and published if it passes.
+  tests:
+    uses: ./.github/workflows/tests.yml
+    permissions:
+      contents: read
+
   build:
+    needs: tests
     # Never run in upstream or in other people's forks, and only ever publish the
     # `custom` branch (scheduled runs use the default branch, which must be `custom`).
+    # (`needs` already implies the tests job succeeded.)
     if: github.repository == 'alanfranz/writefreely' && github.ref == 'refs/heads/custom'
     runs-on: ubuntu-latest
     permissions:
