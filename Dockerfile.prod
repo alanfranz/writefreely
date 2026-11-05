@@ -28,7 +28,17 @@ COPY --from=build /go/src/github.com/writefreely/writefreely/pages /usr/share/wr
 COPY --from=build /go/src/github.com/writefreely/writefreely/static /usr/share/writefreely/static
 COPY --from=build /go/src/github.com/writefreely/writefreely/templates /usr/share/writefreely/templates
 
+# Run as an unprivileged user with a fixed UID/GID (5000), so the owner of the
+# /data volume can be set on the host to match. The app listens on 8080 and
+# needs no root privileges.
+RUN addgroup -S -g 5000 writefreely && \
+	adduser -S -D -H -u 5000 -G writefreely -h /data -s /sbin/nologin writefreely && \
+	mkdir -p /data && \
+	chown writefreely:writefreely /data
+
 ENV WRITEFREELY_DOCKER=True
 ENV HOME=/data
 WORKDIR /data
+# Numeric, so runtimes can verify it is non-root without reading /etc/passwd.
+USER 5000:5000
 CMD ["/usr/bin/writefreely"]
