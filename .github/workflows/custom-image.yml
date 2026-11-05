@@ -2,6 +2,9 @@ name: Build custom container image (ghcr.io/alanfranz/writefreely)
 
 # Builds Dockerfile.prod from the `custom` branch and publishes it as
 # ghcr.io/<owner>/writefreely:<upstream-version>_<build-number>, e.g. 0.17.2_1, 0.17.2_2, ...
+# plus the moving tags <major>.<minor>-latest (e.g. 0.17-latest) and latest.
+# A weekly scheduled rebuild picks up base-image / Alpine / Go security fixes even
+# without new commits (each rebuild gets the next build number).
 #
 # The build number is tracked with git tags named v<upstream-version>+<n> (e.g. v0.17.2+1).
 # The "+n" form is valid semver build metadata, so the version the app reports
@@ -13,6 +16,10 @@ on:
   push:
     branches: [ custom ]
   workflow_dispatch:
+  schedule:
+    # Weekly rebuild, Mondays 04:17 UTC. Scheduled runs use the workflow file on
+    # the default branch and build that branch.
+    - cron: "17 4 * * 1"
 
 # Serialize builds so two runs can never claim the same build number.
 concurrency:
@@ -25,8 +32,9 @@ env:
 
 jobs:
   build:
-    # Never run in upstream or in other people's forks.
-    if: github.repository == 'alanfranz/writefreely'
+    # Never run in upstream or in other people's forks, and only ever publish the
+    # `custom` branch (scheduled runs use the default branch, which must be `custom`).
+    if: github.repository == 'alanfranz/writefreely' && github.ref == 'refs/heads/custom'
     runs-on: ubuntu-latest
     permissions:
       contents: write   # push the build-number tag
@@ -59,6 +67,7 @@ jobs:
 
           git_tag="v${base}+${build}"
           image_tag="${base}_${build}"
+          minor_tag="${base%.*}-latest"
 
           # Annotated tag on the commit being built: `git describe` (used by the
           # Makefile inside the Docker build) picks it up, so the binary reports
@@ -76,7 +85,8 @@ jobs:
 
           echo "git_tag=${git_tag}" >> "$GITHUB_OUTPUT"
           echo "image_tag=${image_tag}" >> "$GITHUB_OUTPUT"
-          echo "Building ${IMAGE_NAME}:${image_tag} (git tag ${git_tag})" >> "$GITHUB_STEP_SUMMARY"
+          echo "minor_tag=${minor_tag}" >> "$GITHUB_OUTPUT"
+          echo "Building ${IMAGE_NAME}:${image_tag} (git tag ${git_tag}), also tagged ${minor_tag} and latest" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.2.0
@@ -96,6 +106,7 @@ jobs:
           flavor: latest=false
           tags: |
             type=raw,value=${{ steps.version.outputs.image_tag }}
+            type=raw,value=${{ steps.version.outputs.minor_tag }}
             type=raw,value=latest
           labels: |
             org.opencontainers.image.version=${{ steps.version.outputs.image_tag }}
@@ -111,5 +122,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Deliberately no layer cache: the `apk upgrade` layers must be re-run on
+          # every build so Alpine security fixes are always picked up.
