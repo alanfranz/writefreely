@@ -30,8 +30,10 @@ func TestMain(m *testing.M) {
 
 		testDB, err = initMySQL(os.Getenv("WF_USER"), os.Getenv("WF_PASSWORD"), os.Getenv("WF_DB"), os.Getenv("WF_HOST"))
 		if err != nil {
-			fmt.Println(err)
-			return
+			// Fail loudly: returning here would exit without running (or
+			// failing) any test
+			fmt.Println("TEST_MYSQL is set, but connecting to MySQL failed:", err)
+			os.Exit(1)
 		}
 	}
 

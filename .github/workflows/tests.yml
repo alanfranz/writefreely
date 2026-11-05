@@ -74,3 +74,8 @@ jobs:
 
       - name: Run tests
         run: go test -tags sqlite -count=1 ./...
+
+      - name: Check that the MySQL tests actually ran
+        run: |
+          go test -tags sqlite -count=1 -v -run '^TestOAuthDatastore$' . | tee "$RUNNER_TEMP/mysql-tests.log" | grep -E '^(---|ok|FAIL)'
+          grep -q -- '--- PASS: TestOAuthDatastore' "$RUNNER_TEMP/mysql-tests.log"
