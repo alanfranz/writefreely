@@ -176,6 +176,26 @@ textarea.section.norm {
 	</div>
 
 	<div class="option">
+		<h2><a name="language"></a>Language</h2>
+		<div class="section">
+			<p class="explain">The language this blog is written in. New posts on this blog will be published in this language, instead of one guessed from your browser. It's also announced to browsers, feed readers, and the fediverse.</p>
+			<select name="lang" id="lang" dir="auto" class="inputform">
+				<option value="">(not set)</option>
+				{{range .Languages}}<option {{if .RTL}}dir="rtl" {{end}}value="{{.Code}}"{{if eq .Code $.Collection.Language}} selected="selected"{{end}}>{{.Name}}</option>
+				{{end}}
+			</select>
+			<ul style="list-style:none">
+				<li>
+					<label><input type="checkbox" name="lang_apply_posts" />
+						Also set this language on all existing posts on this blog
+					</label>
+				</li>
+			</ul>
+			<p class="explain">You can still change the language of individual posts from their <em>Edit metadata</em> page.</p>
+		</div>
+	</div>
+
+	<div class="option">
 		<h2>Custom CSS</h2>
 		<div class="section">
 			<textarea id="css-editor" class="section codable" name="style_sheet">{{.StyleSheet}}</textarea>

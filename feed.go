@@ -115,11 +115,14 @@ func ViewFeed(app *App, w http.ResponseWriter, req *http.Request) error {
 		})
 	}
 
-	rss, err := feed.ToRss()
+	rssFeed := (&feeds.Rss{Feed: feed}).RssFeed()
+	rssFeed.Language = coll.Language
+	rss, err := feeds.ToXML(rssFeed)
 	if err != nil {
 		return err
 	}
 
+	setContentLanguage(w, coll.Language)
 	fmt.Fprint(w, rss)
 	return nil
 }

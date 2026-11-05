@@ -41,6 +41,10 @@ import (
 
 const (
 	collAttrLetterReplyTo = "letter_reply_to"
+	// collAttrLanguage holds the ISO 639-1 code of the language a blog is
+	// written in. When set, it's assigned to all new posts on the blog and
+	// advertised on blog pages and feeds.
+	collAttrLanguage = "language"
 
 	collMaxLengthTitle       = 255
 	collMaxLengthDescription = 160
@@ -48,7 +52,6 @@ const (
 
 type (
 	// TODO: add Direction to db
-	// TODO: add Language to db
 	Collection struct {
 		ID          int64          `datastore:"id" json:"-"`
 		Alias       string         `datastore:"alias" schema:"alias" json:"alias"`
@@ -122,6 +125,11 @@ type (
 		LetterReply  *string         `schema:"letter_reply" json:"letter_reply"`
 		Visibility   *int            `schema:"visibility" json:"public"`
 		Format       *sql.NullString `schema:"format" json:"format"`
+		Language     *string         `schema:"lang" json:"lang"`
+
+		// LangApplyPosts, when true, assigns Language to all existing posts
+		// on the blog, overwriting whatever language they had.
+		LangApplyPosts bool `schema:"lang_apply_posts" json:"lang_apply_posts"`
 	}
 	CollectionFormat struct {
 		Format string
@@ -991,6 +999,7 @@ func handleViewCollection(app *App, w http.ResponseWriter, r *http.Request) erro
 		displayPage.NavSuffix = "/archive/"
 		collTmpl = "collection-archive"
 	}
+	setContentLanguage(w, coll.Language)
 	err = templates[collTmpl].ExecuteTemplate(w, "collection", displayPage)
 	if err != nil {
 		log.Error("Unable to render collection index: %v", err)
@@ -1123,6 +1132,7 @@ func handleViewCollectionTag(app *App, w http.ResponseWriter, r *http.Request) e
 	displayPage.PinnedPosts, _ = app.db.GetPinnedPosts(coll.CollectionObj, isOwner)
 	displayPage.Monetization = app.db.GetCollectionAttribute(coll.ID, "monetization_pointer")
 
+	setContentLanguage(w, coll.Language)
 	err = templates["collection-tags"].ExecuteTemplate(w, "collection-tags", displayPage)
 	if err != nil {
 		log.Error("Unable to render collection tag page: %v", err)
@@ -1228,6 +1238,7 @@ func handleViewCollectionLang(app *App, w http.ResponseWriter, r *http.Request) 
 	if app.cfg.App.Chorus {
 		collTmpl = "chorus-collection"
 	}
+	setContentLanguage(w, coll.Language)
 	err = templates[collTmpl].ExecuteTemplate(w, "collection", displayPage)
 	if err != nil {
 		log.Error("Unable to render collection lang page: %v", err)

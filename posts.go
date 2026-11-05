@@ -1263,9 +1263,9 @@ func (p *PublicPost) ActivityObject(app *App) *activitystreams.Object {
 		// property on Notes.
 		o.Content = "<h1>" + applyBasicMarkdown([]byte(p.DisplayTitle())) + "</h1>\n\n" + o.Content
 	}
-	if p.Language.Valid {
+	if lang := p.effectiveLanguage(); lang != "" {
 		o.ContentMap = map[string]string{
-			p.Language.String: string(p.HTMLContent),
+			lang: string(p.HTMLContent),
 		}
 	}
 	if len(p.Tags) == 0 {
@@ -1606,6 +1606,10 @@ Are you sure it was ever here?` + shortCodeNoSig,
 	p.IsOwner = u != nil && u.ID == p.OwnerID.Int64
 	p.Collection = coll
 	p.IsTopLevel = app.cfg.App.SingleUser
+	if lang := p.effectiveLanguage(); lang != p.Language.String {
+		// Post has no language of its own, so render it in its blog's language
+		p.Language = zero.StringFrom(lang)
+	}
 
 	// Only allow a post owner or admin to view a post for silenced collections
 	if silenced && !p.IsOwner && (u == nil || !u.IsAdmin()) {
@@ -1618,6 +1622,7 @@ Are you sure it was ever here?` + shortCodeNoSig,
 	}
 
 	p.augmentContent()
+	setContentLanguage(w, p.Language.String)
 
 	// Serve collection post
 	if isRaw {

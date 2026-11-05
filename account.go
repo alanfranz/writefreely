@@ -898,11 +898,13 @@ func viewEditCollection(app *App, u *User, w http.ResponseWriter, r *http.Reques
 
 		config.EmailCfg
 		LetterReplyTo string
+		Languages     []languageOption
 	}{
 		UserPage:   NewUserPage(app, r, u, "Edit "+c.DisplayTitle(), flashes),
 		Collection: c,
 		Silenced:   silenced,
 		EmailCfg:   app.cfg.Email,
+		Languages:  postLanguages,
 	}
 	obj.UserPage.CollAlias = c.Alias
 	if obj.EmailCfg.Enabled() {

@@ -33,6 +33,7 @@ import (
 	"github.com/writeas/impart"
 	"github.com/writeas/web-core/activitypub"
 	"github.com/writeas/web-core/auth"
+	"github.com/writeas/web-core/converter"
 	"github.com/writeas/web-core/data"
 	"github.com/writeas/web-core/id"
 	"github.com/writeas/web-core/log"
@@ -707,6 +708,12 @@ func (db *datastore) CreatePost(userID, collID int64, post *SubmittedPost) (*Pos
 		if collID > 0 {
 			ownerCollID.Int64 = collID
 			ownerCollID.Valid = true
+			// A blog's language, when set, takes precedence over whatever was
+			// submitted -- the web editor submits the browser's UI language,
+			// which often isn't the language the post is written in.
+			if collLang := db.GetCollectionAttribute(collID, collAttrLanguage); collLang != "" {
+				post.Language = converter.NullJSONString{sql.NullString{String: collLang, Valid: true}}
+			}
 			var slugVal string
 			if post.Slug != nil && *post.Slug != "" {
 				slugVal = getSlug(*post.Slug, post.Language.String)
@@ -886,6 +893,7 @@ func (db *datastore) GetCollectionBy(condition string, value interface{}) (*Coll
 	c.Public = c.IsPublic()
 	c.Monetization = db.GetCollectionAttribute(c.ID, "monetization_pointer")
 	c.Verification = db.GetCollectionAttribute(c.ID, "verification_link")
+	c.Language = db.GetCollectionAttribute(c.ID, collAttrLanguage)
 
 	c.db = db
 
@@ -930,6 +938,13 @@ func (db *datastore) UpdateCollection(app *App, c *SubmittedCollection, alias st
 	if c.Description != nil {
 		*c.Description = parse.Truncate(*c.Description, collMaxLengthDescription)
 	}
+	if c.Language != nil {
+		lang, ok := normalizeLanguage(*c.Language)
+		if !ok {
+			return impart.HTTPError{http.StatusBadRequest, "Unsupported blog language. Use a two-letter ISO 639-1 code, like \"en\"."}
+		}
+		c.Language = &lang
+	}
 
 	q := query.NewUpdate().
 		SetStringPtr(c.Title, "title").
@@ -956,7 +971,7 @@ func (db *datastore) UpdateCollection(app *App, c *SubmittedCollection, alias st
 	// WHERE values
 	q.Where("alias = ? AND owner_id = ?", alias, c.OwnerID)
 
-	if q.Updates == "" && c.Monetization == nil {
+	if q.Updates == "" && c.Monetization == nil && c.Language == nil {
 		return ErrPostNoUpdatableVals
 	}
 
@@ -1030,6 +1045,30 @@ func (db *datastore) UpdateCollection(app *App, c *SubmittedCollection, alias st
 		}
 	}
 
+	// Update blog language
+	if c.Language != nil {
+		if *c.Language == "" {
+			_, err = db.Exec("DELETE FROM collectionattributes WHERE collection_id = ? AND attribute = ?", collID, collAttrLanguage)
+			if err != nil {
+				log.Error("Unable to delete %s value: %v", collAttrLanguage, err)
+				return err
+			}
+		} else {
+			err = db.SetCollectionAttribute(collID, collAttrLanguage, *c.Language)
+			if err != nil {
+				log.Error("Unable to insert %s value: %v", collAttrLanguage, err)
+				return err
+			}
+			if c.LangApplyPosts {
+				_, err = db.Exec("UPDATE posts SET language = ? WHERE collection_id = ?", *c.Language, collID)
+				if err != nil {
+					log.Error("Unable to apply blog language to posts: %v", err)
+					return err
+				}
+			}
+		}
+	}
+
 	// Update Monetization value
 	if c.Monetization != nil {
 		skipUpdate := false
@@ -1096,7 +1135,10 @@ func (db *datastore) UpdateCollection(app *App, c *SubmittedCollection, alias st
 		}
 	}
 
-	rowsAffected, _ = res.RowsAffected()
+	if res != nil {
+		// res is only set when collection columns (not just attributes) were updated
+		rowsAffected, _ = res.RowsAffected()
+	}
 	if !changed || rowsAffected == 0 {
 		// Show the correct error message if nothing was updated
 		var dummy int
@@ -1864,6 +1906,15 @@ func (db *datastore) ClaimPosts(cfg *config.Config, userID int64, collAlias stri
 		r.Post = fullPost
 		if coll != nil {
 			r.Post.Collection = &CollectionObj{Collection: *coll}
+			if coll.Language != "" && fullPost.Language.String != coll.Language {
+				// Post was moved into a blog with a set language, so adopt it
+				_, err := db.Exec("UPDATE posts SET language = ? WHERE id = ? AND owner_id = ?", coll.Language, fullPost.ID, userID)
+				if err != nil {
+					log.Error("claimPosts (post %s): unable to set blog language: %v", p.ID, err)
+				} else {
+					fullPost.Language = zero.StringFrom(coll.Language)
+				}
+			}
 		}
 
 		rowsAffected, _ := qRes.RowsAffected()
