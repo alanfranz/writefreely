@@ -24,16 +24,16 @@ func TestUpdatesRoundTrip(t *testing.T) {
 	})
 
 	t.Run("Release URL", func(t *testing.T) {
-		url := cache.ReleaseNotesURL()
-
-		reg, err := regexp.Compile(`^https:\/\/blog.writefreely.org\/version(-\d+){1,}$`)
-		if err != nil {
-			t.Fatalf("Test Case Error: Failed to compile regex: %v", err)
-		}
-		match := reg.MatchString(url)
-
-		if !match {
-			t.Fatalf("Malformed Release URL: %s", url)
+		// Don't use the cache's latest version here: it's fetched in the
+		// background by newUpdatesCache, so it may not be there yet.
+		for v, want := range map[string]string{
+			"v0.17.2": "https://blog.writefreely.org/version-0-17-2",
+			"v0.13.0": "https://blog.writefreely.org/version-0-13",
+			"0.8.1":   "https://blog.writefreely.org/version-0-8-1",
+		} {
+			if got := wfReleaseNotesURL(v); got != want {
+				t.Errorf("wfReleaseNotesURL(%q) = %q, want %q", v, got, want)
+			}
 		}
 	})
 
@@ -63,6 +63,11 @@ func TestUpdatesRoundTrip(t *testing.T) {
 
 		if prevLatestVer == cache.latestVersion {
 			t.Fatal("expected latestVersion to update")
+		}
+
+		reg := regexp.MustCompile(`^https:\/\/blog.writefreely.org\/version(-\d+){1,}$`)
+		if url := cache.ReleaseNotesURL(); !reg.MatchString(url) {
+			t.Fatalf("Malformed Release URL: %s", url)
 		}
 
 	})

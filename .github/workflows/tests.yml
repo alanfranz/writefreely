@@ -1,0 +1,76 @@
+name: Tests
+
+# Runs the full Go test suite on every push to the `custom` branch (and on PRs
+# targeting it), including:
+#   - the SQLite-backed integration tests (need `-tags sqlite`, hence cgo)
+#   - the MySQL-backed datastore tests (need TEST_MYSQL and a database whose
+#     schema the per-test databases are cloned from)
+
+on:
+  push:
+    branches: [ custom ]
+  pull_request:
+    branches: [ custom ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: writefreely
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    env:
+      # Used by main_test.go to connect to MySQL and clone per-test databases
+      TEST_MYSQL: "1"
+      WF_USER: root
+      WF_PASSWORD: root
+      WF_DB: writefreely
+      WF_HOST: 127.0.0.1
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          # Same Go version as upstream (go directive in go.mod)
+          go-version-file: go.mod
+
+      - name: Initialize MySQL schema
+        run: |
+          cat > "$RUNNER_TEMP/ci-config.ini" <<EOF
+          [server]
+          port = 8080
+
+          [database]
+          type     = mysql
+          username = $WF_USER
+          password = $WF_PASSWORD
+          database = $WF_DB
+          host     = $WF_HOST
+          port     = 3306
+          EOF
+          go run ./cmd/writefreely -c "$RUNNER_TEMP/ci-config.ini" db init
+
+      - name: Run tests
+        run: go test -tags sqlite -count=1 ./...

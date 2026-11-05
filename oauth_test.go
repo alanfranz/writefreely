@@ -216,9 +216,10 @@ func TestViewOauthInit(t *testing.T) {
 }
 
 func TestViewOauthCallback(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		app := &MockOAuthDatastoreProvider{}
-		h := oauthHandler{
+	// newHandler returns an oauthHandler whose (mocked) provider exchanges any
+	// code for a valid token belonging to remote user "1".
+	newHandler := func(app *MockOAuthDatastoreProvider) oauthHandler {
+		return oauthHandler{
 			Config:   app.Config(),
 			DB:       app.DB(),
 			Store:    app.SessionStore(),
@@ -252,11 +253,44 @@ func TestViewOauthCallback(t *testing.T) {
 				},
 			},
 		}
+	}
+
+	t.Run("existing user logs in", func(t *testing.T) {
+		app := &MockOAuthDatastoreProvider{
+			DoDB: func() OAuthDatastore {
+				return &MockOAuthDatastore{
+					DoGetIDForRemoteUser: func(ctx context.Context, remoteUserID, provider, clientID string) (int64, error) {
+						assert.Equal(t, "1", remoteUserID)
+						return 42, nil
+					},
+					DoGetUserByID: func(userID int64) (*User, error) {
+						assert.Equal(t, int64(42), userID)
+						return &User{ID: 42, Username: "nick"}, nil
+					},
+				}
+			},
+		}
+		h := newHandler(app)
 		req, err := http.NewRequest("GET", "/oauth/callback", nil)
 		assert.NoError(t, err)
 		rr := httptest.NewRecorder()
 		err = h.viewOauthCallback(&App{cfg: app.Config(), sessionStore: app.SessionStore()}, rr, req)
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusTemporaryRedirect, rr.Code)
+		assert.Equal(t, "/", rr.Header().Get("Location"))
+		assert.Contains(t, rr.Header().Get("Set-Cookie"), cookieName+"=", "a session cookie should be set")
+	})
+
+	t.Run("new user with closed registration", func(t *testing.T) {
+		app := &MockOAuthDatastoreProvider{}
+		cfg := app.Config()
+		cfg.App.OpenRegistration = false
+		app.DoConfig = func() *config.Config { return cfg }
+		h := newHandler(app)
+		req, err := http.NewRequest("GET", "/oauth/callback", nil)
+		assert.NoError(t, err)
+		rr := httptest.NewRecorder()
+		err = h.viewOauthCallback(&App{cfg: cfg, sessionStore: app.SessionStore()}, rr, req)
+		assert.Equal(t, impart.HTTPError{Status: http.StatusFound, Message: "/login"}, err)
 	})
 }
